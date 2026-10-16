@@ -1,0 +1,18 @@
+{
+  "default_branch": "main",
+  "branches": [
+    "feat/issue-70-add-regression-tests-for-the-inmemory-store-s",
+    "main",
+    "origin"
+  ],
+  "parent": {
+    "feat/issue-70-add-regression-tests-for-the-inmemory-store-s": "main",
+    "main": null,
+    "origin": "main"
+  },
+  "order": [
+    "main",
+    "feat/issue-70-add-regression-tests-for-the-inmemory-store-s",
+    "origin"
+  ]
+}
