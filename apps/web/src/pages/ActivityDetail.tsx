@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import { describeApiError } from '../apiErrors';
@@ -8,40 +8,29 @@ import { Skeleton, EmptyState, IntentAmount, DetailCard, Section, StatusBadge, A
 export default function ActivityDetail() {
   const { agentId, activityId } = useParams<{ agentId: string; activityId: string }>();
   const navigate = useNavigate();
-  const [activity, setActivity] = useState<ActivityRecord | null>(null);
-  const [executions, setExecutions] = useState<ExecutionRecord[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [reloadKey, setReloadKey] = useState(0);
+  const fetcher = useCallback(async () => {
+    if (!agentId || !activityId) return { activity: null, executions: [] as ExecutionRecord[] };
+    const r = await api.activityDetail(agentId, activityId);
+    let executions: ExecutionRecord[] = [];
+    if (r.activity) {
+      try {
+        const r2 = await api.listAgentExecutions(agentId);
+        executions = r2.executions.filter((e: ExecutionRecord) => e.activityId === activityId);
+      } catch {
+        executions = [];
+      }
+    }
+    return { activity: r.activity, executions };
+  }, [agentId, activityId]);
 
-  useEffect(() => {
-    if (!agentId || !activityId) return;
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    api.activityDetail(agentId, activityId)
-      .then((r) => {
-        if (cancelled) return;
-        setActivity(r.activity);
-        if (r.activity) {
-          api.listAgentExecutions(agentId)
-            .then((r2) => setExecutions(r2.executions.filter((e: ExecutionRecord) => e.activityId === activityId)))
-            .catch(() => {});
-        }
-      })
-      .catch((e: any) => {
-        if (!cancelled) setError(describeApiError(e, 'Failed to load activity'));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => { cancelled = true; };
-  }, [agentId, activityId, reloadKey]);
+  const { data, error, loading, reload } = useApiResource(fetcher, [agentId, activityId]);
+  const activity = data?.activity ?? null;
+  const executions = data?.executions ?? [];
 
-  const retry = () => setReloadKey((k) => k + 1);
+  const retry = reload;
 
   if (loading) return <Skeleton label="Loading activity..." />;
-  if (error) return <EmptyState title="Failed to load activity" message={error} error={true} actionLabel="Retry" onAction={retry} />;
+  if (error) return <EmptyState title="Failed to load activity" message={describeApiError(error, 'Failed to load activity')} error={true} actionLabel="Retry" onAction={retry} />;
   if (!activity) return (
     <EmptyState title="Activity not found" message="This activity does not exist or you do not have access." />
   );
