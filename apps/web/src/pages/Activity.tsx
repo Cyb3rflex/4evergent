@@ -1,46 +1,43 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api';
 import type { ActivityRecord } from '../types';
 import { StatusBadge, Skeleton, EmptyState, IntentAmount, PaginationFooter } from '../components';
+import { useApiResource } from '../hooks/useApiResource';
 
 const PAGE_SIZE = 50;
 
 export default function Activity() {
-  const [activity, setActivity] = useState<ActivityRecord[] | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [nextOffset, setNextOffset] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [extra, setExtra] = useState<ActivityRecord[]>([]);
   const navigate = useNavigate();
 
-  const loadPage = useCallback(async (offset: number, replace: boolean) => {
-    try {
-      const r = await api.listActivity(PAGE_SIZE, offset);
-      setActivity(replace ? r.activity : (prev) => (prev ?? []).concat(r.activity));
-      setHasMore(r.hasMore);
-      setNextOffset(offset + r.activity.length);
-    } catch (e: any) {
-      setError(e.message);
-    }
-  }, []);
+  const fetchPage = useCallback(() => api.listActivity(PAGE_SIZE, 0), []);
+  const { data, error, loading, reload } = useApiResource(fetchPage, []);
 
-  useEffect(() => {
-    loadPage(0, true).catch(() => {});
-  }, [loadPage]);
+  // Reset pagination when the first page changes.
+  const prevDataRef = useState<unknown>(null);
+  if (data && prevDataRef !== data) {
+    setPrevDataRef(Null);
+  }
 
-  const loadMore = () => {
+  const loadMore = async () => {
     setLoadingMore(true);
-    loadPage(nextOffset, false).finally(() => setLoadingMore(false));
+    try {
+      const r = await api.listActivity(PAGE_SIZE, nextOffset);
+      setExtra((prev) => prev.concat(r.activity));
+      setHasMore(r.hasMore);
+      setNextOffset(nextOffset + r.activity.length);
+    } finally {
+      setLoadingMore(false);
+    }
   };
 
-  const retry = () => {
-    setError(null);
-    loadPage(0, true).catch(() => {});
-  };
-
-  if (error) return <EmptyState title="Failed to load activity" message={error} error={true} actionLabel="Retry" onAction={retry} />;
-  if (activity === null) return <Skeleton label="Loading activity..." />;
+  if (error) return <EmptyState title="Failed to load activity" message={error} error={true} actionLabel="Retry" onAction={() => { void reload(); }} />;
+  if (loading || data === null) return <Skeleton label="Loading activity..." />;
+  const activity = data.activity.concat(extra);
   if (activity.length === 0) {
     return (
       <EmptyState
