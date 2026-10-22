@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useApiResource } from '../hooks/useApiResource';
 import { useParams } from 'react-router-dom';
 import { api } from '../api';
 import { describeApiError } from '../apiErrors';
@@ -141,21 +142,8 @@ function deepClonePolicy(policy: PolicyRules): PolicyRules {
 }
 
 function PolicySummary({ agentId }: { agentId: string }) {
-  const [policy, setPolicy] = useState<PolicyRules | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await api.getPolicy(agentId);
-        if (!cancelled) setPolicy(res.policy);
-      } catch (e: any) {
-        if (!cancelled) setError(e.message ?? 'Failed to load policy summary');
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [agentId]);
+  const { data, error } = useApiResource(() => api.getPolicy(agentId), [agentId]);
+  const policy = data?.policy ?? null;
 
   if (error) return null;
   if (!policy) return null;
@@ -198,35 +186,26 @@ function PolicySummary({ agentId }: { agentId: string }) {
 }
 
 function PolicySettings({ agentId }: { agentId: string }) {
+  const { data, loading, error: loadError, reload } = useApiResource(() => api.getPolicy(agentId), [agentId]);
   const [policy, setPolicy] = useState<PolicyRules | null>(null);
   const [version, setVersion] = useState<number | null>(null);
   const [updatedAt, setUpdatedAt] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [form, setForm] = useState<PolicyRules | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        const res = await api.getPolicy(agentId);
-        if (cancelled) return;
-        setPolicy(deepClonePolicy(res.policy));
-        setForm(deepClonePolicy(res.policy));
-        setVersion(res.version);
-        setUpdatedAt(res.updatedAt);
-      } catch (e: any) {
-        if (!cancelled) setError(e.message ?? 'Failed to load policy');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [agentId]);
+    if (!data) return;
+    setPolicy(deepClonePolicy(data.policy));
+    setForm(deepClonePolicy(data.policy));
+    setVersion(data.version);
+    setUpdatedAt(data.updatedAt);
+  }, [data]);
+
+  useEffect(() => {
+    if (loadError) setError(loadError);
+  }, [loadError]);
 
   const updateForm = (patch: Partial<PolicyRules>) => {
     setForm((prev) => (prev ? { ...prev, ...patch } : prev));
@@ -278,6 +257,7 @@ function PolicySettings({ agentId }: { agentId: string }) {
       setVersion(res.version);
       setUpdatedAt(new Date().toISOString());
       setSuccess(`Policy updated (version ${res.version})`);
+      reload();
     } catch (e: any) {
       setError(e.message ?? 'Failed to save policy');
     } finally {
